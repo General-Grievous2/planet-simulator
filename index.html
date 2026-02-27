@@ -1,1 +1,307 @@
-<!DOCTYPE html>\n<html lang="en">\n<head>\n    <meta charset="UTF-8">\n    <meta name="viewport" content="width=device-width, initial-scale=1.0">\n    <title>Gravity Simulator</title>\n    <style>\n        body { font-family: Arial, sans-serif; margin: 0; display: flex; justify-content: center; align-items: center; height: 100vh; background: #000; color: #fff; }\n        canvas { border: 1px solid #fff; }\n    </style>\n</head>\n<body>\n    <h1>Gravity Simulator</h1>\n    <canvas id="canvas" width="800" height="600"></canvas>\n    <script>\n        const canvas = document.getElementById('canvas');\n        const ctx = canvas.getContext('2d');\n        const G = 6.67430e-11; // gravitational constant\n\n        class Planet {\n            constructor(x, y, mass, color) {\n                this.x = x;\n                this.y = y;\n                this.mass = mass;\n                this.color = color;\n                this.vx = 0;\n                this.vy = 0;\n            }\n\n            draw() {\n                ctx.fillStyle = this.color;\n                ctx.beginPath();\n                ctx.arc(this.x, this.y, Math.sqrt(this.mass) * 0.1, 0, Math.PI * 2);\n                ctx.fill();\n            }\n        }\n\n        let planets = [];\n        planets.push(new Planet(400, 300, 5e10, 'blue')); // Example planet\n\n        function update() {\n            ctx.clearRect(0, 0, canvas.width, canvas.height);\n            planets.forEach(planet => {\n                planet.draw();\n            });\n        }\n\n        function loop() {\n            update();\n            requestAnimationFrame(loop);\n        }\n\n        loop();\n    </script>\n</body>\n</html>\n
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>🌌 Planet Simulator — N-Body Gravity</title>
+  <link rel="stylesheet" href="styles.css"/>
+  <!-- emoji favicon -->
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌌</text></svg>"/>
+</head>
+<body>
+  <canvas id="canvas"></canvas>
+
+  <!-- ── Top bar ── -->
+  <header id="topbar">
+    <div id="topbar-left">
+      <span id="logo">🌌 Planet Sim</span>
+    </div>
+    <div id="topbar-center">
+      <select id="preset-select">
+        <option value="">─── Preset ───</option>
+        <optgroup label="🌍 Solar System">
+          <option value="solar-inner">Inner Solar System</option>
+          <option value="solar-full">Full Solar System</option>
+          <option value="earth-moon">Earth–Moon</option>
+        </optgroup>
+        <optgroup label="⭐ Multi-body">
+          <option value="binary-star">Binary Stars</option>
+          <option value="three-body">Figure-8 Three-Body</option>
+          <option value="galaxy-collision">Galaxy Collision</option>
+        </optgroup>
+        <optgroup label="🌟 JOJO'S BIZARRE PRESETS">
+          <option value="jojo-roadroller">DIO's Road Roller 🛣️</option>
+          <option value="jojo-starstruck">Star Platinum ⭐</option>
+          <option value="jojo-requiem">Golden Requiem 👑</option>
+          <option value="jojo-zawarudo">ZA WARUDO ⌛</option>
+        </optgroup>
+      </select>
+      <button id="btn-play" title="Play / Pause (Space)">⏸ Pause</button>
+      <button id="btn-reset" title="Reset (R)">⟳ Reset</button>
+      <button id="btn-add-mode" class="toggle-btn" title="Add body mode (A)">＋ Add Body</button>
+    </div>
+    <div id="topbar-right">
+      <span id="status-bodies">0 bodies</span>
+      <span id="status-time">0 s</span>
+      <span id="status-energy">KE —</span>
+    </div>
+  </header>
+
+  <!-- ── Left panel ── -->
+  <aside id="panel-left" class="panel">
+
+    <!-- Sim controls -->
+    <h3 class="panel-title">⏱ Simulation</h3>
+    <div class="control-group">
+      <label class="ctrl-label">Time Step</label>
+      <div class="row-spaced">
+        <input type="range" id="dt-slider" min="0.1" max="240" step="0.1" value="6"/>
+        <span id="dt-val" class="value-badge">6h/step</span>
+      </div>
+      <label class="ctrl-label" style="margin-top:6px;">Sub-steps (accuracy)</label>
+      <div class="row-spaced">
+        <input type="range" id="substeps-slider" min="1" max="60" step="1" value="10"/>
+        <span id="substeps-val" class="value-badge">10x</span>
+      </div>
+      <label class="ctrl-label" style="margin-top:6px;">Gravity Softening</label>
+      <div class="row-spaced">
+        <input type="range" id="soft-slider" min="0.001" max="0.5" step="0.001" value="0.01"/>
+        <span id="soft-val" class="value-badge">0.01 AU</span>
+      </div>
+    </div>
+
+    <!-- Za Warudo -->
+    <div class="control-group">
+      <button id="btn-zawarudo" class="zawarudo-btn full-btn" title="ZA WARUDO! (Z)">⌛ ZA WARUDO!</button>
+    </div>
+
+    <!-- Overlays -->
+    <div class="control-group">
+      <label class="ctrl-label">👁 Overlays</label>
+      <div class="checkbox-row"><input type="checkbox" id="chk-trails" checked/><label for="chk-trails">Trails</label></div>
+      <div class="checkbox-row"><input type="checkbox" id="chk-engines"       /><label for="chk-engines">Engine arrows</label></div>
+      <div class="checkbox-row"><input type="checkbox" id="chk-center"        /><label for="chk-center">Follow centre of mass</label></div>
+    </div>
+
+    <!-- Add Body -->
+    <div class="control-group">
+      <label class="ctrl-label">➕ Add Body</label>
+
+      <div class="template-grid">
+        <label class="sub-label">Name</label>
+        <input type="text" id="new-name" class="full-input" value="Planet" placeholder="DIO, Earth…"/>
+
+        <label class="sub-label" style="grid-column:1/-1;">Mass</label>
+        <div class="mass-row" style="grid-column:1/-1;">
+          <input type="number" id="new-mass-val" class="full-input" value="5.972" min="0" step="any"/>
+          <select id="new-mass-unit" class="unit-select">
+            <option value="earth"   selected>Earth masses</option>
+            <option value="solar"  >Solar masses</option>
+            <option value="jupiter">Jupiter masses</option>
+            <option value="moon"   >Moon masses</option>
+            <option value="ton"    >Metric tons</option>
+            <option value="kg"     >kg</option>
+          </select>
+        </div>
+
+        <label class="sub-label">Size</label>
+        <input type="range" id="new-radius" min="2" max="40" value="7" class="full-range"/>
+        <span id="new-radius-val" class="value-badge" style="text-align:center;">7px</span>
+
+        <label class="sub-label">Color</label>
+        <input type="color" id="new-color" value="#4fc3f7" class="color-pick"/>
+      </div>
+
+      <div class="row-spaced" style="margin-top:8px;align-items:center;gap:6px;">
+        <label class="sub-label" style="margin:0;">Vel sens.</label>
+        <input type="range" id="vel-sens" min="-2" max="2" step="0.1" value="0" style="flex:1;"/>
+        <span id="vel-sens-val" class="value-badge">×1.0</span>
+      </div>
+
+      <label class="sub-label" style="margin-top:8px;">Quick bodies:</label>
+      <div class="quick-bodies">
+        <button class="quick-btn" data-quick="sun"       title="Sun">☀️ Sun</button>
+        <button class="quick-btn" data-quick="earth"     title="Earth">🌍 Earth</button>
+        <button class="quick-btn" data-quick="moon"      title="Moon">🌙 Moon</button>
+        <button class="quick-btn" data-quick="jupiter"   title="Jupiter">🟤 Jupiter</button>
+        <button class="quick-btn" data-quick="black-hole" title="Black Hole">⚫ BH</button>
+        <button class="quick-btn" data-quick="asteroid"  title="Asteroid">🪨 Rock</button>
+        <button class="quick-btn" data-quick="dio"       title="DIO 🧛">🧛 DIO</button>
+        <button class="quick-btn" data-quick="jotaro"    title="Jotaro ⭐">⭐ ORA</button>
+      </div>
+
+      <div id="add-hint" class="hint" style="display:none;margin-top:6px;">
+        🖱 <b>Click</b> canvas → <b>drag</b> for velocity → <b>release</b> to place!<br/>
+        Press <kbd>Esc</kbd> or click button again to cancel.
+      </div>
+    </div>
+
+  </aside>
+
+  <!-- ── Right panel: Selected body ── -->
+  <aside id="panel-right" class="panel">
+
+    <!-- Nothing selected -->
+    <div id="info-none">
+      <p class="hint" style="text-align:center;padding:20px 0;">
+        Click a body to select it.<br/><br/>
+        Scroll to zoom · Right-drag to pan
+      </p>
+    </div>
+
+    <!-- Body selected -->
+    <div id="info-body" style="display:none;">
+      <div class="panel-title-row">
+        <h3 class="panel-title" id="i-name">—</h3>
+        <button id="btn-delete" class="danger-btn" title="Delete (Del)">🗑</button>
+      </div>
+
+      <!-- Live stats -->
+      <div class="info-grid">
+        <span class="info-lbl">Mass</span>    <span class="info-val" id="i-mass">—</span>
+        <span class="info-lbl">Speed</span>   <span class="info-val" id="i-vel">—</span>
+        <span class="info-lbl">Position</span><span class="info-val" id="i-pos">—</span>
+        <span class="info-lbl">Distance</span><span class="info-val" id="i-orbit">—</span>
+      </div>
+
+      <hr class="divider"/>
+
+      <!-- Edit -->
+      <div class="control-group">
+        <label class="ctrl-label">✏️ Edit</label>
+        <label class="sub-label">Name</label>
+        <input type="text" id="edit-name" class="full-input"/>
+
+        <label class="sub-label" style="grid-column:1/-1;">Mass</label>
+        <div class="mass-row" style="grid-column:1/-1;">
+          <input type="number" id="edit-mass-val" class="full-input" step="any"/>
+          <select id="edit-mass-unit" class="unit-select">
+            <option value="earth"  >Earth masses</option>
+            <option value="solar"  >Solar masses</option>
+            <option value="jupiter">Jupiter masses</option>
+            <option value="moon"   >Moon masses</option>
+            <option value="ton"    >Metric tons</option>
+            <option value="kg"     >kg</option>
+          </select>
+        </div>
+
+        <label class="sub-label">Radius (px)</label>
+        <div class="row-spaced">
+          <input type="range" id="edit-radius" min="2" max="60" value="7" style="flex:1;"/>
+          <span id="edit-radius-val" class="value-badge">7px</span>
+        </div>
+
+        <button id="btn-apply-edit" class="accent-btn full-btn" style="margin-top:6px;">✔ Apply Changes</button>
+      </div>
+
+      <hr class="divider"/>
+
+      <!-- Velocity -->
+      <div class="control-group">
+        <label class="ctrl-label">🚀 Set Velocity (km/s)</label>
+        <div class="row-spaced" style="gap:6px;">
+          <div style="flex:1;display:flex;flex-direction:column;gap:3px;">
+            <label class="sub-label">Vx</label>
+            <input type="number" id="edit-vx" class="full-input" step="0.001" value="0"/>
+          </div>
+          <div style="flex:1;display:flex;flex-direction:column;gap:3px;">
+            <label class="sub-label">Vy</label>
+            <input type="number" id="edit-vy" class="full-input" step="0.001" value="0"/>
+          </div>
+        </div>
+        <button id="btn-apply-vel" class="accent-btn full-btn" style="margin-top:5px;">✔ Set Velocity</button>
+      </div>
+
+      <hr class="divider"/>
+
+      <!-- Impulse / kick -->
+      <div class="control-group">
+        <label class="ctrl-label">💥 Kick Impulse (km/s)</label>
+        <div class="row-spaced" style="gap:6px;">
+          <div style="flex:1;display:flex;flex-direction:column;gap:3px;">
+            <label class="sub-label">ΔVx</label>
+            <input type="number" id="kick-dvx" class="full-input" step="0.1" value="0"/>
+          </div>
+          <div style="flex:1;display:flex;flex-direction:column;gap:3px;">
+            <label class="sub-label">ΔVy</label>
+            <input type="number" id="kick-dvy" class="full-input" step="0.1" value="0"/>
+          </div>
+        </div>
+        <button id="btn-kick" class="full-btn" style="margin-top:5px;">⚡ Apply Kick</button>
+      </div>
+
+      <hr class="divider"/>
+
+      <!-- Engine / constant force -->
+      <div class="control-group">
+        <label class="ctrl-label">🚀 Engine (constant force N)</label>
+        <div class="row-spaced" style="gap:6px;">
+          <div style="flex:1;display:flex;flex-direction:column;gap:3px;">
+            <label class="sub-label">Fx</label>
+            <input type="number" id="engine-fx" class="full-input" step="any" value="0"/>
+          </div>
+          <div style="flex:1;display:flex;flex-direction:column;gap:3px;">
+            <label class="sub-label">Fy</label>
+            <input type="number" id="engine-fy" class="full-input" step="any" value="0"/>
+          </div>
+        </div>
+        <div class="row-center btn-row" style="margin-top:5px;">
+          <button id="btn-engine-apply" class="accent-btn" style="flex:1;">🔴 Engage</button>
+          <button id="btn-engine-off"   class="danger-btn" style="flex:1;">✕ Off</button>
+        </div>
+        <span id="engine-status" class="sub-label" style="margin-top:4px;">Engine off</span>
+      </div>
+
+    </div><!-- /info-body -->
+  </aside>
+
+  <!-- Flash container for collision shouts -->
+  <div id="flash-container"></div>
+
+  <!-- Help button -->
+  <button id="btn-help" title="Help (H)">?</button>
+
+  <!-- Help modal -->
+  <div id="help-modal" class="modal-overlay" style="display:none;">
+    <div class="modal-box">
+      <h3>🌌 Planet Simulator — Help</h3>
+
+      <h4>Mouse</h4>
+      <div class="shortcut-grid">
+        <kbd>Scroll</kbd>       <span>Zoom in / out</span>
+        <kbd>Right-drag</kbd>   <span>Pan camera</span>
+        <kbd>Click body</kbd>   <span>Select it</span>
+        <kbd>Click canvas (add mode)</kbd><span>Place body</span>
+        <kbd>Drag (add mode)</kbd><span>Set initial velocity</span>
+      </div>
+
+      <h4 style="margin-top:10px;">Keyboard</h4>
+      <div class="shortcut-grid">
+        <kbd>Space</kbd>  <span>Pause / Resume</span>
+        <kbd>A</kbd>      <span>Toggle add-body mode</span>
+        <kbd>R</kbd>      <span>Reset simulation</span>
+        <kbd>T</kbd>      <span>Toggle trails</span>
+        <kbd>Z</kbd>      <span>ZA WARUDO! ⌛ (Stop time)</span>
+        <kbd>H</kbd>      <span>This help</span>
+        <kbd>Esc</kbd>    <span>Deselect / cancel add</span>
+        <kbd>Del</kbd>    <span>Delete selected body</span>
+      </div>
+
+      <h4 style="margin-top:10px;">JoJo Tips 🌟</h4>
+      <p class="hint">
+        Name a body <b>DIO</b> → it turns gold 🧛<br/>
+        Name a body <b>Jotaro</b> → it turns blue ⭐<br/>
+        Name a body <b>Kira/Yoshikage</b> → it glows purple 💜<br/>
+        Try the JoJo preset scenes in the preset menu!<br/>
+        Press <kbd>Z</kbd> or click the ZA WARUDO button to stop time!
+      </p>
+
+      <button id="btn-help-close" class="full-btn" style="margin-top:14px;">
+        Close — YARE YARE DAZE 😮‍💨
+      </button>
+    </div>
+  </div>
+
+  <script type="module" src="main.js"></script>
+</body>
+</html>
